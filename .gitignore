@@ -1,0 +1,47 @@
+# --- Secrets : ne JAMAIS les publier ---
+.env
+*.env
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# --- Données locales (régénérables) : archive Kaggle, livraisons simulées, data lake local, entrepôt ---
+data/
+# L'échantillon de l'intégration continue, lui, est versionné (quelques centaines de commandes).
+!tests/fixtures/sample/
+
+# --- dbt ---
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+
+# --- Dagster : l'historique local des exécutions n'est pas versionné, sa configuration oui ---
+dagster_home/*
+!dagster_home/dagster.yaml
+
+# --- Compilation LaTeX (les PDF finaux sont copiés dans docs/livraison/) ---
+docs/rapport/build/
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.xdv
+
+# --- Éditeurs et systèmes ---
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Métadonnées d'installation Python (générées) ---
+*.egg-info/

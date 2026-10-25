@@ -1,0 +1,18 @@
+# Configuration de l'instance Dagster locale (DAGSTER_HOME pointe vers ce dossier, voir le README).
+# L'historique des exécutions est stocké ici en SQLite ; seul ce fichier de configuration est versionné.
+
+concurrency:
+  runs:
+    # DuckDB n'accepte qu'un seul processus en écriture : deux dbt build en parallèle se bloqueraient.
+    # Toutes les exécutions marquées olist/warehouse passent donc en file d'attente, une à la fois.
+    tag_concurrency_limits:
+      - key: "olist/warehouse"
+        limit: 1
+
+# Surveillance des exécutions : applique le délai maximal (tag dagster/max_runtime) et détecte les processus morts.
+run_monitoring:
+  enabled: true
+  poll_interval_seconds: 30
+
+telemetry:
+  enabled: false

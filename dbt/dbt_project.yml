@@ -1,0 +1,35 @@
+name: olist
+version: "1.0.0"
+config-version: 2
+profile: olist
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+target-path: target
+clean-targets: ["target"]
+
+# Trois couches, trois rôles (ADR 003) :
+#   staging       1 modèle = 1 table source : renommer, typer, dédoublonner. Aucune règle métier.
+#   intermediate  les règles métier (commande valide, retard, rang de la commande d'un client), écrites UNE fois.
+#   marts         ce que lisent le tableau de bord et le rapport : schéma en étoile et tables de reporting.
+models:
+  olist:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+
+tests:
+  olist:
+    +severity: error
+
+vars:
+  # Statuts exclus du chiffre d'affaires (décision D2 du cadrage)
+  invalid_order_statuses: ["canceled", "unavailable"]

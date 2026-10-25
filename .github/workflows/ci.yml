@@ -1,0 +1,58 @@
+# Intégration continue : chaque push et chaque pull request reconstruit TOUTE la chaîne sur l'échantillon versionné.
+# Si un test (Python ou dbt) échoue, la pull request est marquée en échec : Hugo ne peut pas casser le projet en silence.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pipeline:
+    name: Pipeline, dbt et tableau de bord
+    runs-on: ubuntu-latest
+    env:
+      # Pas de Docker ni de S3 dans la CI : le lac est un simple dossier. Le code ne fait pas la différence.
+      LAKE_URI: ${{ github.workspace }}/ci/lake
+      DBT_DUCKDB_PATH: ${{ github.workspace }}/ci/warehouse/olist.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: |
+          pip install -r requirements.txt
+          pip install --no-deps -e .
+
+      - name: Style du code (ruff)
+        run: ruff check src tests dashboard scripts
+
+      - name: Tests Python (contrat des livraisons, couche bronze)
+        run: pytest
+
+      - name: Livraisons simulées à partir de l'échantillon
+        run: python -m olist_pipeline.cli deliver --all --zip tests/fixtures/sample --landing ci/landing
+
+      - name: Ingestion dans la couche bronze
+        run: python -m olist_pipeline.cli ingest --all --landing ci/landing
+
+      - name: dbt build (modèles, tests de données, tests unitaires)
+        run: python -m olist_pipeline.dbt_cli build
+
+      - name: Définitions Dagster valides
+        run: dagster definitions validate -m olist_pipeline.definitions
+
+      - name: Tableau de bord (test de fumée)
+        run: pytest tests/test_dashboard.py
+
+  docker:
+    name: Image Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construire l'image
+        run: docker build -t olist-pipeline:ci .

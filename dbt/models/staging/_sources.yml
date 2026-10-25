@@ -1,0 +1,43 @@
+version: 2
+
+# La couche bronze du lac, lue directement en Parquet par DuckDB (rien n'est copié dans l'entrepôt).
+# {name} est remplacé par le nom de la table ; LAKE_URI vaut s3://olist-lake en local, un dossier dans la CI.
+sources:
+  - name: bronze
+    description: "Livraisons mensuelles du partenaire, telles que reçues (tout en texte), une partition par mois."
+    meta:
+      external_location: "read_parquet('{{ env_var('LAKE_URI') }}/bronze/{name}/*/*.parquet', hive_partitioning = true, union_by_name = true)"
+    # Fraîcheur : une livraison est attendue chaque mois ; au-delà de 35 jours sans nouvelle donnée, on alerte.
+    loaded_at_field: _ingested_at
+    freshness:
+      warn_after: { count: 35, period: day }
+      error_after: { count: 45, period: day }
+    tables:
+      - name: orders
+        description: "Une ligne par commande : statut et dates du cycle de vie (heure locale de Brasília, sans fuseau)."
+      - name: order_items
+        description: "Une ligne par article d'une commande : prix et fret."
+      - name: order_payments
+        description: "Une ligne par paiement : une commande peut être réglée en plusieurs fois (bon d'achat + carte…)."
+      - name: order_reviews
+        description: "Avis clients. Un même review_id peut porter sur plusieurs commandes."
+      - name: customers
+        description: "Un customer_id par COMMANDE. Le vrai client est customer_unique_id."
+
+      # Référentiels : livrés en entier, un seul fichier, pas de partition mensuelle ni de fraîcheur.
+      - name: products
+        meta:
+          external_location: "read_parquet('{{ env_var('LAKE_URI') }}/bronze/{name}/{name}.parquet')"
+        freshness: null
+      - name: sellers
+        meta:
+          external_location: "read_parquet('{{ env_var('LAKE_URI') }}/bronze/{name}/{name}.parquet')"
+        freshness: null
+      - name: category_translation
+        meta:
+          external_location: "read_parquet('{{ env_var('LAKE_URI') }}/bronze/{name}/{name}.parquet')"
+        freshness: null
+      - name: geolocation
+        meta:
+          external_location: "read_parquet('{{ env_var('LAKE_URI') }}/bronze/{name}/{name}.parquet')"
+        freshness: null

@@ -1,0 +1,93 @@
+version: 2
+
+models:
+  # ---------------------------------------------------------------- schéma en étoile
+  - name: fct_order_items
+    description: "Faits de vente. GRAIN : un article vendu. Mesure principale : revenue (définition D2)."
+    # Contrat : le tableau de bord et le rapport dépendent de ces colonnes et de ces types.
+    # Si une modification les change, dbt refuse de construire la table au lieu de casser les lecteurs en silence.
+    config:
+      contract: { enforced: true }
+    data_tests:
+      - unique_combination: { arguments: { columns: [order_id, order_item_id] } }
+    columns:
+      - { name: order_id, data_type: varchar, data_tests: [not_null] }
+      - { name: order_item_id, data_type: integer, data_tests: [not_null] }
+      - name: customer_unique_id
+        data_type: varchar
+        data_tests:
+          - relationships: { arguments: { to: ref('dim_customers'), field: customer_unique_id } }
+      - name: product_id
+        data_type: varchar
+        data_tests:
+          - relationships: { arguments: { to: ref('dim_products'), field: product_id } }
+      - name: seller_id
+        data_type: varchar
+        data_tests:
+          - relationships: { arguments: { to: ref('dim_sellers'), field: seller_id } }
+      - name: purchase_date
+        data_type: date
+        data_tests:
+          - relationships: { arguments: { to: ref('dim_date'), field: date_day } }
+      - { name: purchase_month, data_type: date }
+      - { name: customer_state, data_type: varchar }
+      - { name: order_status, data_type: varchar }
+      - { name: is_valid, data_type: boolean }
+      - { name: price, data_type: "decimal(12,2)" }
+      - { name: freight_value, data_type: "decimal(12,2)" }
+      - name: revenue
+        data_type: "decimal(12,2)"
+        description: "Prix de l'article si la commande est valide, 0 sinon. Hors fret."
+        data_tests: [not_null, { non_negative: {} }]
+
+  - name: fct_orders
+    description: "Faits de commande. GRAIN : une commande. Livraison, avis, paiement."
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: customer_unique_id
+        data_tests:
+          - relationships: { arguments: { to: ref('dim_customers'), field: customer_unique_id } }
+
+  - name: dim_customers
+    description: "Un client réel (customer_unique_id) : localisation la plus récente, cohorte, fidélité."
+    columns:
+      - name: customer_unique_id
+        data_tests: [unique, not_null]
+      - name: customer_state
+        data_tests: [{ accepted_brazilian_state: {} }]
+
+  - name: dim_products
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+      - name: category
+        description: "Catégorie en anglais ; repli explicite si la traduction manque, « unknown » si la catégorie manque."
+        data_tests: [not_null]
+
+  - name: dim_sellers
+    columns:
+      - name: seller_id
+        data_tests: [unique, not_null]
+
+  - name: dim_date
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+
+  # ---------------------------------------------------------------- tables de reporting (une par question)
+  - name: rpt_revenue_monthly
+    description: "Q1 · CA mensuel par catégorie et par État."
+  - name: rpt_cohort_retention
+    description: "Q2 · Part des clients d'une cohorte encore actifs N mois après leur premier achat."
+    data_tests:
+      - unique_combination: { arguments: { columns: [cohort_month, months_since_first] } }
+  - name: rpt_delivery_satisfaction
+    description: "Q3 · Note moyenne et part d'avis négatifs selon le retard de livraison."
+  - name: rpt_payments
+    description: "Q4 · Mode de paiement principal, nombre de versements, panier moyen."
+  - name: rpt_freight_by_state
+    description: "Q5 · Ratio fret / prix, délai et retard par État de destination."
+    columns:
+      - name: customer_state
+        data_tests: [unique, not_null]

@@ -1,0 +1,18 @@
+# Connexion de dbt à DuckDB. Aucun secret ici : tout vient des variables d'environnement (.env, chargé par le pipeline).
+olist:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', '../data/warehouse/olist.duckdb') }}"
+      threads: 4
+      extensions: [httpfs]
+      # Accès au lac S3 local. Avec un lac local (intégration continue), ce secret ne sert simplement pas.
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('S3_ACCESS_KEY', 'ci') }}"
+          secret: "{{ env_var('S3_SECRET_KEY', 'ci') }}"
+          endpoint: "{{ env_var('S3_ENDPOINT', '127.0.0.1:8333') }}"
+          url_style: path
+          use_ssl: false
+          region: us-east-1

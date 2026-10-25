@@ -1,0 +1,30 @@
+[project]
+name = "olist-pipeline"
+version = "1.0.0"
+description = "Modern data stack locale : livraisons mensuelles Olist → data lake S3 → dbt + DuckDB → Dagster → Streamlit"
+requires-python = ">=3.12,<3.14"
+authors = [{ name = "Lumu Bamana Manasse" }]
+license = { text = "MIT" }
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Dagster charge les définitions du projet depuis ce module.
+[tool.dagster]
+module_name = "olist_pipeline.definitions"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 130
+src = ["src"]
+
+[tool.ruff.lint]
+# Erreurs (E, F), imports triés (I), syntaxe moderne (UP), pièges courants (B).
+select = ["E", "F", "I", "UP", "B"]

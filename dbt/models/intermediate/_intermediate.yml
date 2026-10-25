@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  - name: int_orders
+    description: >
+      Une ligne par commande, enrichie : client réel, montants agrégés, dernier avis, délai et retard de livraison,
+      rang de la commande chez le client. Source unique des règles métier D2 (commande valide) et D3 (client fidèle).
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: customer_unique_id
+        data_tests: [not_null]
+      - name: is_valid
+        description: "Faux pour les statuts canceled et unavailable (variable invalid_order_statuses)."
+        data_tests: [not_null]
+      - name: delay_days
+        description: "Jours entre la date de livraison promise et la date réelle. Positif = en retard."
+      - name: customer_order_number
+        description: "1 pour la première commande valide du client, 2 pour la deuxième… ; vide si la commande est invalide."
+
+  - name: int_zip_code_locations
+    columns:
+      - name: zip_code_prefix
+        data_tests: [unique, not_null]
+
+unit_tests:
+  # Tests unitaires dbt : on fournit des lignes d'entrée inventées et le résultat attendu.
+  # Ils vérifient la LOGIQUE, sans dépendre des données réelles.
+  - name: test_valid_status_and_delay_rules
+    description: "Une commande annulée est invalide ; le retard se compte en jours après la date promise."
+    model: int_orders
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - { order_id: o1, customer_id: c1, order_status: delivered, purchased_at: "2018-01-01 10:00:00", delivered_at: "2018-01-12 09:00:00", estimated_delivery_date: "2018-01-10" }
+          - { order_id: o2, customer_id: c2, order_status: canceled, purchased_at: "2018-01-02 10:00:00", delivered_at: null, estimated_delivery_date: "2018-01-20" }
+          - { order_id: o3, customer_id: c3, order_status: delivered, purchased_at: "2018-01-03 10:00:00", delivered_at: "2018-01-08 18:00:00", estimated_delivery_date: "2018-01-15" }
+      - input: ref('stg_customers')
+        rows:
+          - { customer_id: c1, customer_unique_id: u1, state: SP }
+          - { customer_id: c2, customer_unique_id: u2, state: RJ }
+          - { customer_id: c3, customer_unique_id: u3, state: MG }
+      - input: ref('stg_order_items')
+        rows: []
+      - input: ref('stg_order_payments')
+        rows: []
+      - input: ref('stg_order_reviews')
+        rows: []
+    expect:
+      rows:
+        - { order_id: o1, is_valid: true, delivery_days: 11, delay_days: 2, is_late: true }
+        - { order_id: o2, is_valid: false, delivery_days: null, delay_days: null, is_late: null }
+        - { order_id: o3, is_valid: true, delivery_days: 5, delay_days: -7, is_late: false }
+
+  - name: test_no_amount_multiplication
+    description: "2 articles et 2 paiements : les montants ne doivent PAS être multipliés par la jointure."
+    model: int_orders
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - { order_id: o1, customer_id: c1, order_status: delivered, purchased_at: "2018-01-01 10:00:00" }
+      - input: ref('stg_customers')
+        rows:
+          - { customer_id: c1, customer_unique_id: u1, state: SP }
+      - input: ref('stg_order_items')
+        rows:
+          - { order_id: o1, order_item_id: 1, price: 100.00, freight_value: 10.00 }
+          - { order_id: o1, order_item_id: 2, price: 50.00, freight_value: 5.00 }
+      - input: ref('stg_order_payments')
+        rows:
+          - { order_id: o1, payment_sequential: 1, payment_type: voucher, installments: 1, payment_value: 40.00 }
+          - { order_id: o1, payment_sequential: 2, payment_type: credit_card, installments: 3, payment_value: 125.00 }
+      - input: ref('stg_order_reviews')
+        rows: []
+    expect:
+      rows:
+        - { order_id: o1, item_count: 2, items_value: 150.00, freight_value: 15.00, payment_value: 165.00, payment_count: 2, max_installments: 3, main_payment_type: credit_card }
+
+  - name: test_repeat_customer_order_number
+    description: "Le rang se compte par client réel (customer_unique_id) et ignore les commandes annulées."
+    model: int_orders
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - { order_id: o1, customer_id: c1, order_status: delivered, purchased_at: "2017-03-01 10:00:00" }
+          - { order_id: o2, customer_id: c2, order_status: canceled, purchased_at: "2017-04-01 10:00:00" }
+          - { order_id: o3, customer_id: c3, order_status: delivered, purchased_at: "2017-05-01 10:00:00" }
+      - input: ref('stg_customers')
+        rows:
+          - { customer_id: c1, customer_unique_id: u1, state: SP }
+          - { customer_id: c2, customer_unique_id: u1, state: SP }
+          - { customer_id: c3, customer_unique_id: u1, state: SP }
+      - input: ref('stg_order_items')
+        rows: []
+      - input: ref('stg_order_payments')
+        rows: []
+      - input: ref('stg_order_reviews')
+        rows: []
+    expect:
+      rows:
+        - { order_id: o1, customer_order_number: 1 }
+        - { order_id: o2, customer_order_number: null }
+        - { order_id: o3, customer_order_number: 2 }

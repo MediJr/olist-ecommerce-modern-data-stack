@@ -1,0 +1,14 @@
+# Versions figées : l'image Docker et l'intégration continue installent exactement la même chose.
+dagster==1.13.26
+dagster-webserver==1.13.26
+dagster-dbt==0.29.26
+dbt-core==1.12.6
+dbt-duckdb==1.11.0
+duckdb==2.0.0
+pandas==2.3.3
+pyarrow==26.0.0
+python-dotenv==1.2.4
+streamlit==1.66.1
+matplotlib==3.11.2
+pytest==9.1.1
+ruff==0.17.2

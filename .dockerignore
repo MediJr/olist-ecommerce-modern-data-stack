@@ -1,0 +1,13 @@
+# Rien de local ni de secret dans l'image : elle se construit à l'identique sur n'importe quel poste.
+.env
+.venv/
+data/
+dagster_home/
+dbt/target/
+dbt/logs/
+docs/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+.git/
+**/*.egg-info/

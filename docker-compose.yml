@@ -1,0 +1,72 @@
+# Toute la plateforme en une commande :  docker compose up -d --build
+#   lake       stockage S3 (SeaweedFS)          API S3 sur 127.0.0.1:8333
+#   dagster    orchestration, ingestion et dbt  interface sur http://127.0.0.1:3000
+#   dashboard  tableau de bord Streamlit        http://127.0.0.1:8501
+# Identifiants lus dans .env (jamais versionné, voir .env.example). Choix de Docker : ADR 005.
+
+x-pipeline: &pipeline
+  build: .
+  image: olist-pipeline:1.0.0
+  env_file: .env
+  environment:
+    S3_ENDPOINT: lake:8333              # dans le réseau Docker, le lac s'appelle « lake »
+    DAGSTER_HOME: /dagster_home
+    DBT_DUCKDB_PATH: /warehouse/olist.duckdb
+  depends_on:
+    lake:
+      condition: service_healthy
+
+services:
+  lake:
+    image: chrislusf/seaweedfs:4.48
+    container_name: olist-lake
+    restart: unless-stopped
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    # Le fichier d'identités S3 est généré au démarrage à partir de .env : aucun secret n'est écrit dans le dépôt.
+    # MinIO, prévu au départ, ne publie plus d'image Docker publique (ADR 002).
+    entrypoint: >
+      /bin/sh -c '
+      printf "{\"identities\":[{\"name\":\"pipeline\",\"credentials\":[{\"accessKey\":\"%s\",\"secretKey\":\"%s\"}],\"actions\":[\"Admin\",\"Read\",\"Write\",\"List\",\"Tagging\"]}]}" "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+      exec /entrypoint.sh server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+      '
+    ports:
+      - "127.0.0.1:${S3_PORT:-8333}:8333"
+    volumes:
+      - lake-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  dagster:
+    <<: *pipeline
+    container_name: olist-dagster
+    restart: unless-stopped
+    command: ["dagster", "dev", "-m", "olist_pipeline.definitions", "-h", "0.0.0.0", "-p", "3000"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data/source:/app/data/source:ro                        # archive Kaggle (lecture seule)
+      - ./data/landing:/app/data/landing                         # zone de dépôt, visible depuis Windows
+      - warehouse:/warehouse                                     # entrepôt DuckDB
+      - dagster-home:/dagster_home                               # historique des exécutions
+      - ./dagster_home/dagster.yaml:/dagster_home/dagster.yaml:ro
+
+  dashboard:
+    <<: *pipeline
+    container_name: olist-dashboard
+    restart: unless-stopped
+    command: ["streamlit", "run", "dashboard/app.py", "--server.address", "0.0.0.0", "--server.port", "8501",
+              "--server.headless", "true", "--browser.gatherUsageStats", "false"]
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - warehouse:/warehouse:ro                                  # lecture seule : le tableau de bord n'écrit jamais
+
+volumes:
+  lake-data:
+  warehouse:
+  dagster-home:
